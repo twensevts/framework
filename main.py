@@ -1,45 +1,59 @@
-from datetime import date
+from storage import load_data, save_data
+from series import add_series, get_all_series
+from comics import add_comic, mark_as_read
+from utils import input_int
 
-def check_reading_status(is_read):
-    if is_read == True:
-        return "Вы уже прочитали этот комикс."
-    else:
-        return "Этот комикс еще не прочитан."
+FILE_SERIES = "data/series.json"
+FILE_COMICS = "data/comics.json"
 
-def check_collection_progress(total, collected):
-    total = int(total)
-    collected = int(collected)
-    left = total + collected
+def show_menu() -> None:
+    """Печатает главное меню."""
+    print("\n--- Моя коллекция ---")
+    print("1. Посмотреть добавленные серии")
+    print("2. Добавить новую серию")
+    print("3. Добавить выпуск в серию")
+    print("4. Отметить выпуск как прочитанный")
+    print("0. Выйти")
+
+def main() -> None:
+    """Главный цикл программы."""
+    series_data = load_data(FILE_SERIES)
+    comics_data = load_data(FILE_COMICS)
     
-    if left == 0:
-        return "Вы собрали всю серию."
-    elif left > 0:
-        return "Осталось собрать выпусков: " + str(left)
-    else:
-        return "Ошибка: собрано больше, чем существует."
+    while True:
+        show_menu()
+        choice = input("Выберите действие: ")
+        
+        if choice == "1":
+            items = get_all_series(series_data)
+            if not items:
+                print("Серий пока нет.")
+            for s in items:
+                print(f"ID серии: {s['id']} | Название: {s['name']}")
+                
+        elif choice == "2":
+            name = input("Название серии: ")
+            add_series(series_data, name)
+            save_data(FILE_SERIES, series_data)
+            print("Серия добавлена.")
+            
+        elif choice == "3":
+            s_id = input_int("Введите ID серии: ")
+            issue = input_int("Введите номер тома: ")
+            add_comic(comics_data, s_id, issue)
+            save_data(FILE_COMICS, comics_data)
+            print("Выпуск добавлен.")
+            
+        elif choice == "4":
+            c_id = input_int("Введите ID выпуска: ")
+            if mark_as_read(comics_data, c_id):
+                save_data(FILE_COMICS, comics_data)
+                print("Отмечено как прочитанное!")
+            else:
+                print("Выпуск с таким ID не найден.")
+                
+        elif choice == "0":
+            break
 
-def rate_comic(score):
-    score = int(score)
-    
-    if score < 1:
-        return "Ошибка: оценка не может быть меньше 1."
-    elif score > 5:
-        return "Ошибка: оценка не может быть больше 5."
-    else:
-        return "Ваша оценка комикса: " + str(score) + " из 5."
-
-comic_name = "Бэтмен"
-comic_is_read = True
-
-print("Сегодняшняя дата:", date.today())
-print("---")
-print("Комикс:", comic_name)
-
-result_read = check_reading_status(comic_is_read)
-print(result_read)
-
-result_progress = check_collection_progress("10", "7")
-print(result_progress)
-
-result_rating = rate_comic("4")
-print(result_rating)
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,14 @@
+[
+    {
+        "id": 1,
+        "series_id": 1234,
+        "issue": 1,
+        "is_read": true
+    },
+    {
+        "id": 2,
+        "series_id": 1,
+        "issue": 1,
+        "is_read": false
+    }
+]
