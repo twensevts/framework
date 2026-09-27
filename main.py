@@ -1,16 +1,22 @@
 """Консольный интерфейс системы коллекционирования комиксов."""
 
-from collection import (
-    add_to_collection,
-    get_collection,
-    get_collection_issues,
-    get_statistics,
-    missing_issue_numbers,
+from models.collections import (
+    add_collection,
+    show_collection,
 )
-from issues import add_issue, mark_as_read, rate_issue, sort_issues
-from series import add_series, find_series_by_id, sort_series
-from storage import load_data, save_data
-from users import add_user, find_user_by_id
+from models.issues import add_issue, find_issue_by_id
+from models.series import add_series, find_series_by_id, show_series
+from models.users import add_user, find_user_by_id, show_users
+from storage import (
+    load_collections,
+    load_issues,
+    load_series,
+    load_users,
+    save_collections,
+    save_issues,
+    save_series,
+    save_users,
+)
 from utils import input_int, input_rating
 
 DATA_FILES = {
@@ -21,58 +27,126 @@ DATA_FILES = {
 }
 
 
+def load_all() -> dict:
+    """Загрузить объекты и восстановить связи между ними."""
+    users = load_users(DATA_FILES["users"])
+    series = load_series(DATA_FILES["series"])
+    issues = load_issues(DATA_FILES["issues"], series)
+    collections = load_collections(
+        DATA_FILES["collections"], users, issues
+    )
+    return {
+        "users": users,
+        "series": series,
+        "issues": issues,
+        "collections": collections,
+    }
+
+
+def save_all(data: dict) -> None:
+    """Сохранить все объекты приложения в JSON."""
+    save_users(DATA_FILES["users"], data["users"])
+    save_series(DATA_FILES["series"], data["series"])
+    save_issues(DATA_FILES["issues"], data["issues"])
+    save_collections(DATA_FILES["collections"], data["collections"])
+
+
 def show_menu() -> None:
     """Вывести главное меню."""
     print("\n=== Система коллекционирования комиксов ===")
     print("1. Показать серии")
     print("2. Добавить серию")
-    print("3. Добавить пользователя")
-    print("4. Добавить выпуск в коллекцию")
-    print("5. Показать коллекцию")
-    print("6. Отметить выпуск прочитанным")
-    print("7. Оценить выпуск")
-    print("8. Показать недостающие выпуски")
-    print("9. Показать статистику")
+    print("3. Показать пользователей")
+    print("4. Добавить пользователя")
+    print("5. Добавить выпуск в коллекцию")
+    print("6. Показать коллекцию")
+    print("7. Удалить выпуск из коллекции")
+    print("8. Отметить выпуск прочитанным")
+    print("9. Оценить выпуск")
+    print("10. Показать недостающие выпуски")
+    print("11. Показать статистику")
     print("0. Сохранить и выйти")
 
 
-def show_series(series: list[dict]) -> None:
-    """Вывести каталог серий."""
-    for item in sort_series(series):
-        print(
-            f"{item['id']}: {item['title']} — {item['author']} "
-            f"({item['total_issues']} выпусков)"
+def select_collection(data: dict):
+    """Запросить пользователя и вернуть его коллекцию."""
+    user_id = input_int("ID пользователя: ", 1)
+    user = find_user_by_id(data["users"], user_id)
+    if user is None:
+        print("Пользователь не найден.")
+        return None
+    return add_collection(data["collections"], user)
+
+
+def add_issue_to_collection(data: dict) -> None:
+    """Создать выпуск при необходимости и добавить в коллекцию."""
+    collection = select_collection(data)
+    if collection is None:
+        return
+    series_id = input_int("ID серии: ", 1)
+    series = find_series_by_id(data["series"], series_id)
+    if series is None:
+        print("Серия не найдена.")
+        return
+    number = input_int("Номер выпуска: ", 1)
+    issue = add_issue(data["issues"], series, number)
+    if collection.add_issue(issue):
+        print("Выпуск добавлен.")
+    else:
+        print("Выпуск уже находится в коллекции.")
+
+
+def edit_issue(data: dict, action: str) -> None:
+    """Изменить статус или оценку выпуска из коллекции."""
+    collection = select_collection(data)
+    if collection is None:
+        return
+    issue_id = input_int("ID выпуска: ", 1)
+    issue = find_issue_by_id(collection.issues, issue_id)
+    if issue is None:
+        print("Выпуск не найден в коллекции.")
+        return
+    if action == "read":
+        issue.mark_as_read()
+        print("Выпуск отмечен как прочитанный.")
+    else:
+        issue.rate(input_rating("Оценка: "))
+        print("Оценка сохранена.")
+
+
+def handle_collection_action(data: dict, choice: str) -> None:
+    """Обработать просмотр, удаление и аналитику коллекции."""
+    collection = select_collection(data)
+    if collection is None:
+        return
+    if choice == "6":
+        show_collection(collection)
+    elif choice == "7":
+        issue_id = input_int("ID выпуска: ", 1)
+        message = (
+            "Выпуск удалён."
+            if collection.remove_issue(issue_id)
+            else "Выпуск не найден в коллекции."
         )
-
-
-def show_collection(collection: dict, issues: list[dict]) -> None:
-    """Вывести выпуски пользовательской коллекции."""
-    collected = sort_issues(get_collection_issues(collection, issues))
-    if not collected:
-        print("Коллекция пуста.")
-    for issue in collected:
-        status = "прочитан" if issue["is_read"] else "не прочитан"
-        print(
-            f"ID {issue['id']}: серия {issue['series_id']}, "
-            f"выпуск №{issue['number']}, {status}, "
-            f"оценка: {issue['rating'] or 'нет'}"
-        )
-
-
-def save_all(data: dict[str, list[dict]]) -> None:
-    """Сохранить все данные проекта."""
-    for name, filename in DATA_FILES.items():
-        save_data(filename, data[name])
+        print(message)
+    elif choice == "10":
+        series_id = input_int("ID серии: ", 1)
+        series = find_series_by_id(data["series"], series_id)
+        if series is None:
+            print("Серия не найдена.")
+            return
+        missing = list(collection.missing_issue_numbers(series))
+        print(f"Недостающие выпуски: {missing or 'нет'}")
+    else:
+        print(collection.statistics())
 
 
 def main() -> None:
     """Запустить цикл обработки команд пользователя."""
-    data = {name: load_data(path) for name, path in DATA_FILES.items()}
-
+    data = load_all()
     while True:
         show_menu()
         choice = input("Выберите действие: ").strip()
-
         try:
             if choice == "1":
                 show_series(data["series"])
@@ -84,58 +158,20 @@ def main() -> None:
                     input_int("Количество выпусков: ", 1),
                 )
             elif choice == "3":
-                add_user(data["users"], input("Имя: "), input("Email: "))
-            elif choice in {"4", "5", "8", "9"}:
-                user_id = input_int("ID пользователя: ", 1)
-                if find_user_by_id(data["users"], user_id) is None:
-                    print("Пользователь не найден.")
-                    continue
-                collection = get_collection(data["collections"], user_id)
-
-                if choice == "4":
-                    series_id = input_int("ID серии: ", 1)
-                    series_item = find_series_by_id(data["series"], series_id)
-                    if series_item is None:
-                        print("Серия не найдена.")
-                        continue
-                    number = input_int("Номер выпуска: ", 1)
-                    if number > series_item["total_issues"]:
-                        print("Такого выпуска в серии нет.")
-                        continue
-                    try:
-                        issue = add_issue(data["issues"], series_id, number)
-                    except ValueError:
-                        issue = next(
-                            item
-                            for item in data["issues"]
-                            if item["series_id"] == series_id
-                            and item["number"] == number
-                        )
-                    add_to_collection(
-                        data["collections"], user_id, issue["id"]
-                    )
-                elif choice == "5":
-                    show_collection(collection, data["issues"])
-                elif choice == "8":
-                    series_id = input_int("ID серии: ", 1)
-                    series_item = find_series_by_id(data["series"], series_id)
-                    if series_item is None:
-                        print("Серия не найдена.")
-                        continue
-                    collected = get_collection_issues(
-                        collection, data["issues"]
-                    )
-                    print(list(missing_issue_numbers(series_item, collected)))
-                else:
-                    print(get_statistics(collection, data["issues"]))
-            elif choice == "6":
-                mark_as_read(data["issues"], input_int("ID выпуска: ", 1))
-            elif choice == "7":
-                rate_issue(
-                    data["issues"],
-                    input_int("ID выпуска: ", 1),
-                    input_rating("Оценка: "),
+                show_users(data["users"])
+            elif choice == "4":
+                user = add_user(
+                    data["users"], input("Имя: "), input("Email: ")
                 )
+                add_collection(data["collections"], user)
+            elif choice == "5":
+                add_issue_to_collection(data)
+            elif choice in {"6", "7", "10", "11"}:
+                handle_collection_action(data, choice)
+            elif choice == "8":
+                edit_issue(data, "read")
+            elif choice == "9":
+                edit_issue(data, "rate")
             elif choice == "0":
                 save_all(data)
                 print("Данные сохранены.")

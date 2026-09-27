@@ -1,27 +1,41 @@
 import pytest
 
-from series import add_series, find_series, find_series_by_id, sort_series
+from models.series import (
+    Series,
+    add_series,
+    find_series,
+    find_series_by_id,
+    sort_series,
+)
 
 
-def test_add_and_find_series():
-    series = []
-    created = add_series(series, "Бэтмен", "Джеф Лоуб", 13)
+def test_series_properties_and_methods():
+    series = Series(1, "Бэтмен", "Джеф Лоуб", 13)
 
-    assert created["total_issues"] == 13
-    assert find_series_by_id(series, 1) is created
-    assert find_series(series, "бэт") == [created]
-
-
-def test_sort_series_by_total_issues():
-    series = []
-    add_series(series, "Длинная", "Автор", 20)
-    add_series(series, "Короткая", "Автор", 5)
-
-    result = sort_series(series, "total_issues")
-
-    assert [item["total_issues"] for item in result] == [5, 20]
+    assert series.has_issue(1)
+    assert series.has_issue(13)
+    assert not series.has_issue(14)
+    assert "Бэтмен" in str(series)
 
 
-def test_series_requires_positive_issue_count():
+def test_add_find_and_sort_series():
+    catalog = []
+    long = add_series(catalog, "Длинная", "Автор", 20)
+    short = add_series(catalog, "Короткая", "Автор", 5)
+
+    assert find_series_by_id(catalog, 2) is short
+    assert find_series(catalog, "длин") == [long]
+    assert sort_series(catalog, "total_issues") == [short, long]
+
+
+def test_invalid_series_is_forbidden():
     with pytest.raises(ValueError):
-        add_series([], "Название", "Автор", 0)
+        Series(1, "Название", "Автор", 0)
+
+    with pytest.raises(ValueError):
+        Series(1, "", "Автор", 3)
+
+
+def test_unknown_sort_field_is_forbidden():
+    with pytest.raises(ValueError):
+        sort_series([], "unknown")
